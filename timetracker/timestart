@@ -1,0 +1,47 @@
+#!/bin/bash
+# timestart - start tracking time for a category, project, and tags
+# Usage: timestart <category> <project> [tag1] [tag2] ...
+
+set -e
+
+DATA_DIR="/home/sam/notes/_data/timetracker"
+LOG_FILE="${DATA_DIR}/log"
+CURRENT_FILE="${DATA_DIR}/current"
+
+# ensure data directory exists
+mkdir -p "$DATA_DIR"
+
+# check if we have at least category and project
+if [ $# -lt 2 ]; then
+    echo "Usage: timestart <category> <project> [tag1] [tag2] ..." >&2
+    exit 1
+fi
+
+CATEGORY="$1"
+PROJECT="$2"
+shift 2
+TAGS="$@"
+
+# check if something is already running
+if [ -f "$CURRENT_FILE" ]; then
+    echo "Warning: A timer is already running. Stopping it first..." >&2
+    timestop
+fi
+
+# get current timestamp in ISO 8601 format
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# write start entry to log
+if [ -n "$TAGS" ]; then
+    echo "$TIMESTAMP start $CATEGORY $PROJECT $TAGS" >> "$LOG_FILE"
+else
+    echo "$TIMESTAMP start $CATEGORY $PROJECT" >> "$LOG_FILE"
+fi
+
+# store current session info
+echo "$TIMESTAMP|$CATEGORY|$PROJECT|$TAGS" > "$CURRENT_FILE"
+
+echo "Started tracking: $CATEGORY / $PROJECT"
+if [ -n "$TAGS" ]; then
+    echo "Tags: $TAGS"
+fi

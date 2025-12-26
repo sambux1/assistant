@@ -1,0 +1,35 @@
+#!/bin/bash
+# timestop - stop tracking the current timer
+# Usage: timestop
+
+set -e
+
+DATA_DIR="/home/sam/notes/_data/timetracker"
+LOG_FILE="${DATA_DIR}/log"
+CURRENT_FILE="${DATA_DIR}/current"
+
+# check if something is running
+if [ ! -f "$CURRENT_FILE" ]; then
+    echo "Error: No timer is currently running." >&2
+    exit 1
+fi
+
+# read current session info
+CURRENT_SESSION=$(cat "$CURRENT_FILE")
+START_TIME=$(echo "$CURRENT_SESSION" | cut -d'|' -f1)
+CATEGORY=$(echo "$CURRENT_SESSION" | cut -d'|' -f2)
+PROJECT=$(echo "$CURRENT_SESSION" | cut -d'|' -f3)
+
+# get current timestamp
+STOP_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# write stop entry to log
+echo "$STOP_TIME stop $CATEGORY $PROJECT" >> "$LOG_FILE"
+
+# remove current session file
+rm "$CURRENT_FILE"
+
+# calculate duration (optional: could use Python for more precise calculation)
+echo "Stopped tracking: $CATEGORY / $PROJECT"
+echo "Duration: $START_TIME -> $STOP_TIME"
+
