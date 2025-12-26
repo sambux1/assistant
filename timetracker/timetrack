@@ -1,0 +1,34 @@
+#!/bin/bash
+# timetrack - summarize time tracking data
+# Usage: timetrack [day|week|month|year]
+
+set -e
+
+# resolve symlink to find actual script directory
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+# follow symlinks
+while [ -L "$SCRIPT_PATH" ]; do
+    SCRIPT_PATH=$(readlink "$SCRIPT_PATH")
+    # if relative symlink, resolve relative to directory of symlink
+    if [[ "$SCRIPT_PATH" != /* ]]; then
+        SCRIPT_PATH="$(dirname "${BASH_SOURCE[0]}")/$SCRIPT_PATH"
+    fi
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+PYTHON_SCRIPT="${SCRIPT_DIR}/timetrack_summary.py"
+
+# default to day if no argument provided
+PERIOD="${1:-day}"
+
+# validate period
+if [[ ! "$PERIOD" =~ ^(day|week|month|year)$ ]]; then
+    echo "Usage: timetrack [day|week|month|year]" >&2
+    echo "  day   - show today's summary (default)" >&2
+    echo "  week  - show this week's summary (Monday-Sunday)" >&2
+    echo "  month - show this month's summary" >&2
+    echo "  year  - show this year's summary" >&2
+    exit 1
+fi
+
+python3 "$PYTHON_SCRIPT" "$PERIOD"
+
