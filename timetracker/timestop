@@ -1,6 +1,6 @@
 #!/bin/bash
 # timestop - stop tracking the current timer
-# Usage: timestop
+# Usage: timestop [delete]
 
 set -e
 
@@ -8,7 +8,43 @@ DATA_DIR="/home/sam/notes/_data/timetracker"
 LOG_FILE="${DATA_DIR}/log"
 CURRENT_FILE="${DATA_DIR}/current"
 
-# check if something is running
+# handle delete option
+if [ "$1" = "delete" ]; then
+    if [ -f "$CURRENT_FILE" ]; then
+        # timer is running, delete the start entry and current file
+        CURRENT_SESSION=$(cat "$CURRENT_FILE")
+        CATEGORY=$(echo "$CURRENT_SESSION" | cut -d'|' -f2)
+        PROJECT=$(echo "$CURRENT_SESSION" | cut -d'|' -f3)
+        
+        # remove last start line from log (should be the last line)
+        if [ -f "$LOG_FILE" ]; then
+            sed -i '$d' "$LOG_FILE"
+        fi
+        
+        rm "$CURRENT_FILE"
+        echo "Deleted tracking session: $CATEGORY / $PROJECT"
+    else
+        # no timer running, delete last stop and start entries
+        if [ ! -f "$LOG_FILE" ] || [ ! -s "$LOG_FILE" ]; then
+            echo "Error: No entries to delete." >&2
+            exit 1
+        fi
+        
+        # remove last line (should be a stop entry)
+        sed -i '$d' "$LOG_FILE"
+        
+        # remove the line before that (should be the corresponding start entry)
+        if [ -s "$LOG_FILE" ]; then
+            sed -i '$d' "$LOG_FILE"
+            echo "Deleted last tracking session"
+        else
+            echo "Deleted last tracking session"
+        fi
+    fi
+    exit 0
+fi
+
+# normal stop behavior
 if [ ! -f "$CURRENT_FILE" ]; then
     echo "Error: No timer is currently running." >&2
     exit 1
@@ -29,7 +65,15 @@ echo "$STOP_TIME stop $CATEGORY $PROJECT" >> "$LOG_FILE"
 # remove current session file
 rm "$CURRENT_FILE"
 
-# calculate duration (optional: could use Python for more precise calculation)
+# calculate duration in seconds
+START_SECONDS=$(date -u -d "${START_TIME}" +%s)
+STOP_SECONDS=$(date -u -d "${STOP_TIME}" +%s)
+DURATION_SECONDS=$((STOP_SECONDS - START_SECONDS))
+
+# convert to hours and minutes
+HOURS=$((DURATION_SECONDS / 3600))
+MINUTES=$(((DURATION_SECONDS % 3600) / 60))
+
 echo "Stopped tracking: $CATEGORY / $PROJECT"
-echo "Duration: $START_TIME -> $STOP_TIME"
+echo "Duration: ${HOURS}:$(printf "%02d" ${MINUTES})"
 
