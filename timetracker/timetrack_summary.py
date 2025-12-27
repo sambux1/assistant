@@ -5,9 +5,24 @@ timetrack_summary.py - summarize time tracking data
 
 import sys
 import os
+import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from pathlib import Path
+
+# try to use zoneinfo (Python 3.9+), fallback to pytz
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    try:
+        from dateutil.tz import gettz
+        ZoneInfo = lambda name: gettz(name)
+    except ImportError:
+        import pytz
+        ZoneInfo = lambda name: pytz.timezone(name)
+
+EASTERN = ZoneInfo('America/New_York')
+UTC = ZoneInfo('UTC')
 
 DATA_DIR = Path.home() / "notes" / "_data" / "timetracker"
 LOG_FILE = DATA_DIR / "log"
@@ -27,12 +42,14 @@ def parse_log_line(line):
     tags = parts[4:] if len(parts) > 4 else []
     
     try:
-        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        # parse as UTC, then convert to Eastern Time
+        timestamp_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        timestamp_eastern = timestamp_utc.astimezone(EASTERN)
     except ValueError:
         return None
     
     return {
-        'timestamp': timestamp,
+        'timestamp': timestamp_eastern,
         'action': action,
         'category': category,
         'project': project,
@@ -41,16 +58,16 @@ def parse_log_line(line):
 
 
 def get_time_range(period):
-    """get start and end datetime for the given period"""
-    now = datetime.now().replace(tzinfo=None)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    """get start and end datetime for the given period in Eastern Time"""
+    now_eastern = datetime.now(EASTERN)
+    today_start = now_eastern.replace(hour=0, minute=0, second=0, microsecond=0)
     
     if period == 'day':
         start = today_start
         end = today_start + timedelta(days=1)
     elif period == 'week':
         # monday is 0, sunday is 6
-        days_since_monday = (now.weekday()) % 7
+        days_since_monday = (now_eastern.weekday()) % 7
         start = today_start - timedelta(days=days_since_monday)
         end = start + timedelta(days=7)
     elif period == 'month':
@@ -88,6 +105,9 @@ def summarize(period='day'):
         print("Valid periods: day, week, month, year")
         return
     
+    # time the parsing
+    parse_start = time.time()
+    
     # read and parse log entries
     entries = []
     with open(LOG_FILE, 'r') as f:
@@ -96,15 +116,17 @@ def summarize(period='day'):
             if entry:
                 entries.append(entry)
     
+    parse_duration = time.time() - parse_start
+    
     # match start/stop pairs and calculate durations
     sessions = []
     pending_starts = {}  # key: (category, project) -> list of start times
     
     for entry in entries:
-        # convert to naive datetime for comparison (assuming UTC)
-        entry_time = entry['timestamp'].replace(tzinfo=None)
+        # entry timestamp is already in Eastern Time
+        entry_time = entry['timestamp']
         
-        # check if entry is in the time range
+        # check if entry is in the time range (both in Eastern Time)
         if entry_time < start_time or entry_time >= end_time:
             continue
         
@@ -160,6 +182,14 @@ def summarize(period='day'):
             print(f"  {category}/")
             current_category = category
         print(f"    {project}: {format_duration(int(duration))}")
+    
+    # print parsing time at the bottom
+    if parse_duration < 1:
+        parse_time_str = f"{parse_duration * 1000:.3f}ms"
+    else:
+        parse_time_str = f"{parse_duration:.2f}s"
+    print()
+    print(f"({parse_time_str} to parse log file)")
 
 
 if __name__ == '__main__':
