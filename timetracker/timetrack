@@ -1,6 +1,7 @@
 #!/bin/bash
 # timetrack - summarize time tracking data
-# Usage: timetrack [day|week|month|year]
+# Usage: timetrack [day|week|month|year] [tag]
+#        timetrack tag [list]
 
 set -e
 
@@ -17,18 +18,43 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 PYTHON_SCRIPT="${SCRIPT_DIR}/timetrack_summary.py"
 
-# default to day if no argument provided
+# handle "tag list" command
+if [ "$1" = "tag" ] && [ "$2" = "list" ]; then
+    python3 "$PYTHON_SCRIPT" "tag" "list"
+    exit 0
+fi
+
+# handle "tag" command (defaults to day with tags)
+if [ "$1" = "tag" ]; then
+    python3 "$PYTHON_SCRIPT" "tag"
+    exit 0
+fi
+
+# handle period with optional "tag" keyword
 PERIOD="${1:-day}"
+SHOW_TAGS=""
+
+if [ "$2" = "tag" ]; then
+    SHOW_TAGS="tag"
+fi
 
 # validate period
 if [[ ! "$PERIOD" =~ ^(day|week|month|year)$ ]]; then
-    echo "Usage: timetrack [day|week|month|year]" >&2
+    echo "Usage: timetrack [day|week|month|year] [tag]" >&2
+    echo "        timetrack tag [list]" >&2
+    echo "" >&2
     echo "  day   - show today's summary (default)" >&2
     echo "  week  - show this week's summary (Monday-Sunday)" >&2
     echo "  month - show this month's summary" >&2
     echo "  year  - show this year's summary" >&2
+    echo "  tag   - show tag breakdown within projects" >&2
+    echo "  tag list - list all tags by project" >&2
     exit 1
 fi
 
-python3 "$PYTHON_SCRIPT" "$PERIOD"
+if [ -n "$SHOW_TAGS" ]; then
+    python3 "$PYTHON_SCRIPT" "$PERIOD" "$SHOW_TAGS"
+else
+    python3 "$PYTHON_SCRIPT" "$PERIOD"
+fi
 

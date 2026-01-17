@@ -93,7 +93,7 @@ def format_duration(seconds):
     return f"{hours}:{minutes:02d}"
 
 
-def summarize(period='day'):
+def summarize(period='day', show_tags=False):
     """summarize time tracking for the given period"""
     if not LOG_FILE.exists():
         print("No log file found.")
@@ -120,7 +120,7 @@ def summarize(period='day'):
     
     # match start/stop pairs and calculate durations
     sessions = []
-    pending_starts = {}  # key: (category, project) -> list of start times
+    pending_starts = {}  # key: (category, project) -> list of (start_time, tags)
     
     for entry in entries:
         # entry timestamp is already in Eastern Time
@@ -135,17 +135,18 @@ def summarize(period='day'):
         if entry['action'] == 'start':
             if key not in pending_starts:
                 pending_starts[key] = []
-            pending_starts[key].append(entry_time)
+            pending_starts[key].append((entry_time, entry['tags']))
         elif entry['action'] == 'stop':
             if key in pending_starts and pending_starts[key]:
-                start = pending_starts[key].pop(0)
+                start, tags = pending_starts[key].pop(0)
                 duration = (entry_time - start).total_seconds()
                 sessions.append({
                     'category': entry['category'],
                     'project': entry['project'],
                     'start': start,
                     'end': entry_time,
-                    'duration': duration
+                    'duration': duration,
+                    'tags': tags
                 })
     
     if not sessions:
@@ -182,6 +183,30 @@ def summarize(period='day'):
             print(f"  {category}/")
             current_category = category
         print(f"    {project}: {format_duration(int(duration))}")
+        
+        # if show_tags is True, show tag breakdown for this project
+        if show_tags:
+            # collect all sessions for this category/project
+            project_sessions = [s for s in sessions if s['category'] == category and s['project'] == project]
+            # group by tags
+            tag_durations = defaultdict(float)
+            for s in project_sessions:
+                if s['tags']:
+                    # create a key from sorted tags for consistency
+                    tag_key = tuple(sorted(s['tags']))
+                    tag_durations[tag_key] += s['duration']
+                else:
+                    tag_durations[tuple()] += s['duration']
+            
+            if tag_durations:
+                # sort by duration
+                sorted_tags = sorted(tag_durations.items(), key=lambda x: x[1], reverse=True)
+                for tag_tuple, tag_duration in sorted_tags:
+                    if tag_tuple:
+                        tag_str = ', '.join(tag_tuple)
+                        print(f"      [{tag_str}]: {format_duration(int(tag_duration))}")
+                    else:
+                        print(f"      [no tags]: {format_duration(int(tag_duration))}")
     
     # print parsing time at the bottom
     if parse_duration < 1:
@@ -192,7 +217,63 @@ def summarize(period='day'):
     print(f"({parse_time_str} to parse log file)")
 
 
+def list_tags():
+    """list all tags broken apart by project"""
+    if not LOG_FILE.exists():
+        print("No log file found.")
+        return
+    
+    # read and parse log entries
+    entries = []
+    with open(LOG_FILE, 'r') as f:
+        for line in f:
+            entry = parse_log_line(line)
+            if entry:
+                entries.append(entry)
+    
+    # collect all tags by project
+    # structure: {category: {project: set(tags)}}
+    tags_by_project = defaultdict(lambda: defaultdict(set))
+    
+    for entry in entries:
+        if entry['action'] == 'start' and entry['tags']:
+            category = entry['category']
+            project = entry['project']
+            for tag in entry['tags']:
+                tags_by_project[category][project].add(tag)
+    
+    if not tags_by_project:
+        print("No tags found in any projects.")
+        return
+    
+    print("Tags by Project")
+    print("=" * 50)
+    
+    # sort categories and projects for consistent output
+    sorted_categories = sorted(tags_by_project.keys())
+    
+    for category in sorted_categories:
+        print(f"\n  {category}/")
+        sorted_projects = sorted(tags_by_project[category].keys())
+        for project in sorted_projects:
+            tags = sorted(tags_by_project[category][project])
+            print(f"    {project}:")
+            for tag in tags:
+                print(f"      - {tag}")
+
+
 if __name__ == '__main__':
-    period = sys.argv[1] if len(sys.argv) > 1 else 'day'
-    summarize(period)
+    if len(sys.argv) > 1 and sys.argv[1] == 'tag' and len(sys.argv) > 2 and sys.argv[2] == 'list':
+        list_tags()
+    elif len(sys.argv) > 1 and sys.argv[1] == 'tag':
+        # timetrack tag (without period, default to day)
+        period = 'day'
+        summarize(period, show_tags=True)
+    elif len(sys.argv) > 2 and sys.argv[2] == 'tag':
+        # timetrack <period> tag
+        period = sys.argv[1]
+        summarize(period, show_tags=True)
+    else:
+        period = sys.argv[1] if len(sys.argv) > 1 else 'day'
+        summarize(period)
 
